@@ -77,6 +77,20 @@ class extrapolator:
             self.deltas[i] = (self.deltas[i][0] + delta_v, next_times[i])
         return True
 
+    def make_derivs(self, time=None, delta_rank=None):
+        """Convert mean deltas to derivatives at specific moment"""
+        if time is None:
+            time = self.deltas[0][1]
+        if delta_rank is None:
+            delta_rank = len(self.deltas) - 1
+        # Collapse the first 'delta_rank' mean delta intervals to zero
+        for i in range(delta_rank + 1):
+            if self.deltas[i][1] != time:
+                ret = self.extrapolate(time)
+                if not ret:
+                    return False
+        return True
+
     def __iter__(self):
         """Iterator over derivative values and times"""
         for i in range(self.num_deltas()):
