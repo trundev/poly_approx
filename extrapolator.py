@@ -1,5 +1,8 @@
-class extrapolator:
-    """Extrapolate signal value, by keeping track of its derivatives over time"""
+"""Simple polynomial approximation tool"""
+import math
+
+class approximator:
+    """Approximate signal value, by keeping track of its derivatives over time"""
     # Vector of the signal value deltas (val, time):
     # 0 - values itself (zero-derivative):
     #       delta0: value
@@ -14,12 +17,11 @@ class extrapolator:
     #
     # Note that, all mean derivative intervals end at 'time0' and each one is
     # included in the next
-    deltas = []
+    deltas = None
 
     def __init__(self, src=None):
         # Optional-copy constructor
-        if src is not None:
-            self.deltas = src.deltas.copy()
+        self.deltas = [] if src is None else src.deltas.copy() 
 
     def copy(self):
         """Duplicate the object"""
@@ -34,20 +36,22 @@ class extrapolator:
         """Get the number of derivatives"""
         return len(self.deltas)
 
-    def get_value_time(self, delta_rank=0):
-        """Retrieve specific derivative value and time"""
+    def get_value_time(self, delta_rank=0, as_deriv=False):
+        """Retrieve specific mean delta/derivative value and time"""
+        if as_deriv:
+            return self.deltas[delta_rank][0] * math.factorial(delta_rank), self.deltas[delta_rank][1]
         return self.deltas[delta_rank]
 
-    def get_value(self, delta_rank=0):
-        """Retrieve specific derivative value"""
-        return self.get_value_time(delta_rank)[0]
+    def get_value(self, delta_rank=0, as_deriv=False):
+        """Retrieve specific mean delta/derivative value"""
+        return self.get_value_time(delta_rank, as_deriv)[0]
 
     def __next_times(self, time0):
         """Build a new 'times' vector by shifting the last one up"""
         return [time0] + [v[1] for v in self.deltas]
 
     def update(self, val0, time0):
-        """Update 'deltas' based on a derivative value at specific moment"""
+        """Update 'deltas' based on a signal value at specific moment"""
         # Advance delta's times, based on the required time0
         next_times = self.__next_times(time0)
 
@@ -73,10 +77,15 @@ class extrapolator:
         self.deltas = list(zip(next_deltas, next_times))
         return None if any(d is None for d in next_deltas) else ret
 
+    #
+    # The functions below, marked as (destructive),
+    # must not be used on an object, where the "approximation" is in progress.
+    # These transformations must be applied on a copy of such object.
+    #
     def extrapolate(self, time0):
         """Extrapolate 'deltas' to specific moment (destructive)"""
         if len(self.deltas) < 1:
-            return False
+            return None
 
         # Advance delta's times, based on the required time0
         next_times = self.__next_times(time0)[:len(self.deltas)]
@@ -87,6 +96,21 @@ class extrapolator:
             delta_t = time0 - self.deltas[i][1]
             delta_v = self.deltas[i + 1][0] * delta_t
             self.deltas[i] = (self.deltas[i][0] + delta_v, next_times[i])
+        return self.deltas[0][0]
+
+    def differentiate(self, time0=None):
+        """Shift the 'deltas' down to match the differential function (destructive)"""
+        if not self.make_derivs(time0):
+            return False
+        self.deltas = [(d * (i + 1), t) for i, (d, t) in enumerate(self.deltas[1:])]
+        return True
+
+    def integrate(self, val0, time0=None):
+        """Shift the 'deltas' up to match the integral function (destructive)"""
+        if not self.make_derivs(time0):
+            return False
+        int_deltas = [(d / (i + 1), t) for i, (d, t) in enumerate(self.deltas)]
+        self.deltas = [(val0, self.deltas[0][1])] + int_deltas
         return True
 
     def make_derivs(self, time=None, delta_rank=None):
@@ -100,8 +124,7 @@ class extrapolator:
         # Collapse the first 'delta_rank' mean delta intervals to zero
         for i in range(delta_rank + 1):
             if self.deltas[i][1] != time:
-                ret = self.extrapolate(time)
-                if not ret:
+                if self.extrapolate(time) is None:
                     return False
         return True
 
