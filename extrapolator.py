@@ -50,7 +50,7 @@ class approximator:
         """Build a new 'times' vector by shifting the last one up"""
         return [time0] + [v[1] for v in self.deltas]
 
-    def update(self, val0, time0):
+    def approximate(self, val0, time0):
         """Update 'deltas' based on a signal value at specific moment"""
         # Advance delta's times, based on the required time0
         next_times = self.__next_times(time0)
@@ -76,6 +76,31 @@ class approximator:
         # Make the new vector actual one
         self.deltas = list(zip(next_deltas, next_times))
         return None if any(d is None for d in next_deltas) else ret
+
+    def __add__(self, obj):
+        """Sum of approximations with compatible intervals"""
+        res_obj = __class__()
+        for (v, t), (v1, t1) in zip(self.deltas, obj.deltas):
+            #assert t == t1, 'The intervals do not match (%d, %d)'%(t, t1)
+            if t != t1:
+                return None
+            res_obj.deltas.append((v + v1, t))
+
+        # Append the remainder
+        if len(self.deltas) != len(obj.deltas):
+            rem_deltas = self.deltas if len(self.deltas) > len(obj.deltas) else obj.deltas
+            res_obj.deltas += rem_deltas[len(res_obj.deltas):]
+        return res_obj
+
+    def __neg__(self):
+        """Negate the approximation"""
+        res_obj = __class__()
+        res_obj.deltas = [(-v, t) for v, t in self.deltas]
+        return res_obj
+
+    def __sub__(self, obj):
+        """Difference between approximations with compatible intervals"""
+        return self.__add__(obj.__neg__())
 
     #
     # The functions below, marked as (destructive),
@@ -137,3 +162,14 @@ class approximator:
     def from_poly_coefs(self, coefs, time=0):
         """Initialize 'deltas' from polynomial coefficients (destructive)"""
         self.deltas = [(c, time) for i, c in enumerate(coefs)]
+
+    def reduce(self, max_rank=None, min_val=0, as_deriv=False):
+        """Cut highest-rank derivatives: by number and/or by minimal value (destructive)"""
+        for i in reversed(range(1, len(self.deltas[:max_rank]))):
+            val = self.deltas[i][0]
+            if as_deriv:
+                val *= math.factorial(i)
+            if math.fabs(val) > min_val:
+                max_rank = i + 1
+                break
+        self.deltas = self.deltas[:max_rank]
