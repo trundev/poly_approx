@@ -29,12 +29,18 @@ class approximator:
 
     def __iter__(self):
         """Iterator over derivative values and times"""
-        for d_x in self.deltas:
-            yield d_x
+        for v_t in self.deltas:
+            yield v_t
 
-    def num_deltas(self):
-        """Get the number of derivatives"""
-        return len(self.deltas)
+    def num_deltas(self, min_val=None):
+        """Get the number of derivatives (or actual ones)"""
+        if min_val is None:
+            return len(self.deltas)
+        # Obtain the first "actual" value in reverse
+        for i, (v, _) in enumerate(self.deltas[::-1]):
+            if math.fabs(v) > min_val:
+                return len(self.deltas) - i
+        return 0
 
     def get_value_time(self, delta_rank=0, as_deriv=False):
         """Retrieve specific mean delta/derivative value and time"""
@@ -48,7 +54,7 @@ class approximator:
 
     def __next_times(self, time0):
         """Build a new 'times' vector by shifting the last one up"""
-        return [time0] + [v[1] for v in self.deltas]
+        return [time0] + [t for _, t in self.deltas]
 
     def approximate(self, val0, time0):
         """Update 'deltas' based on a signal value at specific moment"""
@@ -60,22 +66,19 @@ class approximator:
         next_deltas[0] = val0
 
         # Update toward differentials
-        for i in range(len(self.deltas)):
-            delta_t = time0 - self.deltas[i][1]
+        num_independ = 1
+        for i, (v, t) in enumerate(self.deltas):
+            delta_t = time0 - t
             if delta_t == 0:
-                break   # Leave None in 'next_deltas'
-            delta_v = next_deltas[i] - self.deltas[i][0]
+                return None     # Leave the object intact
+            delta_v = next_deltas[i] - v
             next_deltas[i + 1] = delta_v / delta_t
-        # Drop the extra delta-rank, if zero
-        if 1 < len(next_deltas) and not next_deltas[-1]:
-            next_deltas = next_deltas[:-1]
-            ret = False
-        else:
-            ret = True      # This value is independent from others
+            if delta_v != 0:
+                num_independ = i + 2
 
         # Make the new vector actual one
         self.deltas = list(zip(next_deltas, next_times))
-        return None if any(d is None for d in next_deltas) else ret
+        return len(self.deltas) - num_independ
 
     def __add__(self, obj):
         """Sum of approximations with compatible intervals"""
@@ -117,6 +120,7 @@ class approximator:
 
         # Extrapolate deltas at selected moments, assuming the last delta is constant
         self.deltas[-1] = (self.deltas[-1][0], next_times[-1])
+        # Update toward intergrals, starting from the next to last
         for i in reversed(range(0, len(self.deltas) - 1)):
             delta_t = time0 - self.deltas[i][1]
             delta_v = self.deltas[i + 1][0] * delta_t
@@ -127,14 +131,14 @@ class approximator:
         """Shift the 'deltas' down to match the differential function (destructive)"""
         if not self.make_derivs(time0):
             return False
-        self.deltas = [(d * (i + 1), t) for i, (d, t) in enumerate(self.deltas[1:])]
+        self.deltas = [(v * (i + 1), t) for i, (v, t) in enumerate(self.deltas[1:])]
         return True
 
     def integrate(self, val0, time0=None):
         """Shift the 'deltas' up to match the integral function (destructive)"""
         if not self.make_derivs(time0):
             return False
-        int_deltas = [(d / (i + 1), t) for i, (d, t) in enumerate(self.deltas)]
+        int_deltas = [(v / (i + 1), t) for i, (v, t) in enumerate(self.deltas)]
         self.deltas = [(val0, self.deltas[0][1])] + int_deltas
         return True
 
@@ -157,19 +161,23 @@ class approximator:
         """Calculate polynomial coefficients (destructive)"""
         if not self.make_derivs(time):
             return None
-        return [d[0] for i, d in enumerate(self.deltas)]
+        return [v for v, _ in self.deltas]
 
     def from_poly_coefs(self, coefs, time=0):
         """Initialize 'deltas' from polynomial coefficients (destructive)"""
-        self.deltas = [(c, time) for i, c in enumerate(coefs)]
+        self.deltas = [(c, time) for c in coefs]
 
-    def reduce(self, max_rank=None, min_val=0, as_deriv=False):
+    def reduce(self, max_rank=None, min_val=None, as_deriv=False):
         """Cut highest-rank derivatives: by number and/or by minimal value (destructive)"""
-        for i in reversed(range(1, len(self.deltas[:max_rank]))):
-            val = self.deltas[i][0]
-            if as_deriv:
-                val *= math.factorial(i)
-            if math.fabs(val) > min_val:
-                max_rank = i + 1
-                break
+        if min_val is not None:
+            # Obtain the first "actual" value in reverse, starting at "max_rank"
+            for i in reversed(range(1, len(self.deltas[:max_rank]))):
+                val = self.deltas[i][0]
+                if as_deriv:
+                    val *= math.factorial(i)
+                if math.fabs(val) > min_val:
+                    max_rank = i + 1
+                    break
+            else:
+                max_rank = 0
         self.deltas = self.deltas[:max_rank]
