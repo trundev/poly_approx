@@ -32,6 +32,11 @@ class approximator:
         for v_t in self.deltas:
             yield v_t
 
+    def __reversed__(self):
+        """Reverse iterator over derivative values and times"""
+        for v_t in self.deltas[::-1]:
+            yield v_t
+
     def num_deltas(self, min_val=None):
         """Get the number of derivatives (or actual ones)"""
         if min_val is None:
@@ -55,6 +60,21 @@ class approximator:
     def __next_times(self, time0):
         """Build a new 'times' vector by shifting the last one up"""
         return [time0] + [t for _, t in self.deltas]
+
+    def find_gap(self, min_ranks, max_val=0, as_deriv=False):
+        """Locate the first continuous gap of negligible deltas"""
+        first = ranks = 0
+        for i, (v, _) in enumerate(self.deltas):
+            if as_deriv:
+                v *= math.factorial(i)
+            if math.fabs(v) <= max_val:
+                ranks += 1
+            elif ranks < min_ranks:
+                ranks = 0
+                first = i + 1
+            else:
+                return first, ranks
+        return first, None
 
     def approximate(self, val0, time0):
         """Update 'deltas' based on a signal value at specific moment"""
@@ -127,6 +147,21 @@ class approximator:
             self.deltas[i] = (self.deltas[i][0] + delta_v, next_times[i])
         return self.deltas[0][0]
 
+    def rewind(self):
+        """Revert the result from the last approximate() invocation"""
+        # The end of all intervals is in rank 0
+        _, time0 = self.deltas[0]
+
+        # Update toward differentials, like approximate()
+        for i, (v, _) in enumerate(self.deltas[:-1]):
+            # The time was moved into the upper rank, see __next_times()
+            t = self.deltas[i + 1][1]
+            delta_v = self.deltas[i + 1][0] * (time0 - t)
+            self.deltas[i] = (v - delta_v, t)
+
+        # Cut the last delta
+        self.deltas = self.deltas[:-1]
+
     def differentiate(self, time0=None):
         """Shift the 'deltas' down to match the differential function (destructive)"""
         if not self.make_derivs(time0):
@@ -167,8 +202,10 @@ class approximator:
         """Initialize 'deltas' from polynomial coefficients (destructive)"""
         self.deltas = [(c, time) for c in coefs]
 
-    def reduce(self, max_rank=None, min_val=None, as_deriv=False):
+    def reduce(self, max_rank=None, min_val=None, as_deriv=False, keep_time=False):
         """Cut highest-rank derivatives: by number and/or by minimal value (destructive)"""
+        if keep_time:
+            _, last_time = self.deltas[-1]
         if min_val is not None:
             # Obtain the first "actual" value in reverse, starting at "max_rank"
             for i in reversed(range(1, len(self.deltas[:max_rank]))):
@@ -181,3 +218,6 @@ class approximator:
             else:
                 max_rank = 0
         self.deltas = self.deltas[:max_rank]
+        if keep_time:
+            self.deltas[-1] = self.deltas[-1][0], last_time
+        return len(self.deltas)
