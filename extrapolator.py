@@ -50,6 +50,9 @@ class approximator:
     def get_value_time(self, delta_rank=0, as_deriv=False):
         """Retrieve specific mean delta/derivative value and time"""
         if as_deriv:
+            # Allow python-style negative indices
+            if delta_rank < 0:
+                delta_rank += len(self.deltas)
             return self.deltas[delta_rank][0] * math.factorial(delta_rank), self.deltas[delta_rank][1]
         return self.deltas[delta_rank]
 
@@ -130,7 +133,7 @@ class approximator:
     # must not be used on an object, where the "approximation" is in progress.
     # These transformations must be applied on a copy of such object.
     #
-    def extrapolate(self, time0):
+    def extrapolate(self, time0, keep_time=False):
         """Extrapolate 'deltas' to specific moment (destructive)"""
         if len(self.deltas) < 1:
             return None
@@ -138,8 +141,10 @@ class approximator:
         # Advance delta's times, based on the required time0
         next_times = self.__next_times(time0)[:len(self.deltas)]
 
-        # Extrapolate deltas at selected moments, assuming the last delta is constant
-        self.deltas[-1] = (self.deltas[-1][0], next_times[-1])
+        # The last delta is assumed constant, thus its time-interval does not affect
+        # this result. However, further operations might need the whole scope.
+        if not keep_time:
+            self.deltas[-1] = (self.deltas[-1][0], next_times[-1])
         # Update toward intergrals, starting from the next to last
         for i in reversed(range(0, len(self.deltas) - 1)):
             delta_t = time0 - self.deltas[i][1]
@@ -188,7 +193,7 @@ class approximator:
         # Collapse the first 'delta_rank' mean delta intervals to zero
         for i in range(delta_rank + 1):
             if self.deltas[i][1] != time:
-                if self.extrapolate(time) is None:
+                if self.extrapolate(time, keep_time=False) is None:
                     return False
         return True
 
@@ -221,3 +226,28 @@ class approximator:
         if keep_time:
             self.deltas[-1] = self.deltas[-1][0], last_time
         return len(self.deltas)
+
+    def align_times(self, ref_obj):
+        """Align time-intervals to the ones in 'ref_obj', allows __add__() (destructive)"""
+        # Use the minimal set of times
+        for _, t in reversed(ref_obj.deltas[:len(self.deltas)]):
+            if self.extrapolate(t, keep_time=False) is None:
+                return None
+        return self
+
+    def split_at_gap(self, split_rank):
+        """Split object into two, by using reduce() and rewind() (destructive)"""
+        rest_obj = self.copy()
+        self.reduce(split_rank)
+
+        # Temporarily drop the cut-out and rewind
+        rest_obj -= self
+        for _ in range(split_rank - 1):
+            rest_obj.rewind()
+
+        # Combine actual object by adding back the cut-out (must be aligned)
+        align_obj = self.copy()
+        if align_obj.align_times(rest_obj) is None:
+            return None
+        rest_obj += align_obj
+        return rest_obj
