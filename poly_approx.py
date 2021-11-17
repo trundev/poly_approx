@@ -3,20 +3,23 @@ import math
 
 class approximator:
     """Approximate signal value, by keeping track of its derivatives over time"""
-    # Vector of the signal value deltas (val, time):
+    # Vector of the signal value deltas tuple(val, time):
     # 0 - values itself (zero-derivative):
     #       delta0: value
     #       time0: time
     # 1 - first mean derivative for the interval 'time1' to 'time0':
-    #       delta1: 1 * (delta0 - delta0_last) / (time0 - time0_last)
+    #       delta1: (delta0 - delta0_last) / (time0 - time0_last)
     #       time1: time0_last
     # 2 - second mean derivative for the interval 'time2' to 'time0'):
-    #       delta2: 2 * (delta1 - delta1_last) / (time0 - time1_last)
+    #       delta2: (delta1 - delta1_last) / (time0 - time1_last)
     #       time2: time1_last
     # 3 - etc.
     #
-    # Note that, all mean derivative intervals end at 'time0' and each one is
-    # included in the next
+    # Notea:
+    # - All mean derivative intervals end at 'time0' and each one is included in the next
+    # - The 'time' values may be unordered, thus 'time0' can be between other 'times'
+    # - When all the 'times' below a mean derivative are the equal (zero delta-time),
+    #   it is collapsed and is proportional to the actual derivative
     deltas = None
 
     def __init__(self, src=None):
@@ -42,8 +45,9 @@ class approximator:
         if min_val is None:
             return len(self.deltas)
         # Obtain the first "actual" value in reverse
+        min_val *= min_val  # Use square, instead of abs()
         for i, (v, _) in enumerate(self.deltas[::-1]):
-            if math.fabs(v) > min_val:
+            if v * v > min_val:
                 return len(self.deltas) - i
         return 0
 
@@ -67,10 +71,11 @@ class approximator:
     def find_gap(self, min_ranks, max_val=0, as_deriv=False):
         """Locate the first continuous gap of negligible deltas"""
         first = ranks = 0
+        max_val *= max_val  # Use square, instead of abs()
         for i, (v, _) in enumerate(self.deltas):
             if as_deriv:
                 v *= math.factorial(i)
-            if math.fabs(v) <= max_val:
+            if v * v <= max_val:
                 ranks += 1
             elif ranks < min_ranks:
                 ranks = 0
@@ -213,11 +218,12 @@ class approximator:
             _, last_time = self.deltas[-1]
         if min_val is not None:
             # Obtain the first "actual" value in reverse, starting at "max_rank"
+            min_val *= min_val  # Use square, instead of abs()
             for i in reversed(range(1, len(self.deltas[:max_rank]))):
                 val = self.deltas[i][0]
                 if as_deriv:
                     val *= math.factorial(i)
-                if math.fabs(val) > min_val:
+                if val * val > min_val:
                     max_rank = i + 1
                     break
             else:
