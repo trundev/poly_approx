@@ -24,7 +24,7 @@ class approximator:
 
     def __init__(self, src=None):
         # Optional-copy constructor
-        self.deltas = [] if src is None else src.deltas.copy() 
+        self.deltas = [] if src is None else src.deltas.copy()
 
     def copy(self):
         """Duplicate the object"""
