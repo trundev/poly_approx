@@ -1,0 +1,62 @@
+name: Validate polynomial approximation
+
+on:
+  push:
+    branches: [ main, '**-test' ]
+  pull_request:
+
+jobs:
+  run_pytest:
+    strategy:
+      matrix:
+        os: [windows-latest]
+        python-version: ['3.13', '3.8']
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: "${{ matrix.python-version }}"
+
+    - name: Install module and development deps
+      run: |
+        python -m pip install --upgrade pip
+        pip install .[dev]
+
+    - name: Run PyTest
+      run: pytest --capture=tee-sys
+
+  pip_install:
+    env:
+      # To install this exact version
+      PIP_NAME: "git+https://github.com/${{ github.repository }}@${{ github.sha }}"
+
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        # Arbitrary python version
+        python-version: '3.13'
+
+    - name: Install module from GitHub (${{ env.PIP_NAME }})
+      run: python -m pip install "${{ env.PIP_NAME }}"
+
+    - name: Simple functionality test
+      shell: python
+      run: |
+        from poly_approx import poly_approx
+
+        # Feed 3 samples from "x^2" polynomial
+        obj = poly_approx.approximator()
+        for t in range(3):
+            obj.approximate(t**2, t)
+
+        # Extrapolate at 10
+        assert obj.extrapolate(10) == 10**2

@@ -1,3 +1,18 @@
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
+[project]
+name = "poly_approx"
+version = "0.0.1"       # Keep in sync with poly_approx/__init__.py:__version__
+description = "Simple polynomial approximation for digital signals"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Environment :: Console",
+    "Topic :: Scientific/Engineering :: Signal Processing",
+    "Development Status :: 1 - Planning",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = {text = "MIT License"}
+
+[project.optional-dependencies]
+# Development deps, installed through `pip install .[dev]`
+dev = ["pytest"]
